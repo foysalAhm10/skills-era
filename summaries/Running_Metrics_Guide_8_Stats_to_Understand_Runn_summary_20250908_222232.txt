@@ -1,0 +1,43 @@
+Summary of: Running Metrics Guide: 8 Stats to Understand - Runner&#x27;s World
+URL: https://www.runnersworld.com/training/a43793832/running-metrics-guide/
+Summary Date: 2025-09-08T22:22:32.860219
+==================================================
+
+SUMMARY:
+A big part of improving your running, and [nailing a new PR](https://www.runnersworld.com/training/a38678470/how-to-break-out-of-a-pr-rut/), comes from your heart—your willingness to embrace the joy, disappointments, and thrills of [training](https://www.runnersworld.com/training/a43546449/track-workouts/). But your head also factors in when you’re aiming to [get faster](https://www.runnersworld.com/beginner/a20793471/why-am-i-not-getting-any-faster/), and paying attention to qualitative stats about your running performance can pay off. A lower cadence could signal you’re overstriding. If your cadence is lower than 165 steps per minute, try to pick it up
+
+==================================================
+FULL CONTENT:
+A big part of improving your running, and [nailing a new PR](https://www.runnersworld.com/training/a38678470/how-to-break-out-of-a-pr-rut/), comes from your heart—your willingness to embrace the joy, disappointments, and thrills of [training](https://www.runnersworld.com/training/a43546449/track-workouts/). But your head also factors in when you’re aiming to [get faster](https://www.runnersworld.com/beginner/a20793471/why-am-i-not-getting-any-faster/), and paying attention to qualitative stats about your running performance can pay off.
+
+New running [smart watches](https://www.runnersworld.com/gear/a20827055/advanced-gps-watches-for-runners/) can help supply those stats. Many gather *alllll* kinds of numbers each time you go for an [outdoor jog](https://www.runnersworld.com/training/a26859968/treadmill-versus-overground-running-study/). The latest [update to Apple Watch](https://www.runnersworld.com/gear/a40221814/watchos-9-running-features-for-apple-watch/) takes measurements like ground contact time and vertical oscillation; running watches from [Garmin](https://www.runnersworld.com/gear/g36901854/best-garmin-watches/) track these and widgets like Training Status, which combine metrics to give you a glimpse at your overall fitness and whether you’re improving.
+
+“Runners can use many of these objective, data-based features to keep themselves honest,” says Joe Heikes, a runner in Olathe, Kansas, and product engineer at Garmin. “We all can fool ourselves sometimes if we’re just listening to our bodies and not looking at the numbers; even some of the very fastest, most experienced runners can.”
+
+That being said, stressing about some of the metrics might not be productive, as not every metric has an ideal number to hit. “Many of the [running mechanics](https://www.runnersworld.com/training/a65616598/how-form-impacts-running-pace/)–related metrics are going to be very individual, so there really isn’t an optimal number to target and focusing on ‘improving’ them could actually increase [injury](https://www.runnersworld.com/health-injuries/a43249522/it-may-not-be-running-that-caused-your-running-injury/) risk,” says Jeff Gaudette, owner and head coach at [RunnersConnect](https://runnersconnect.net/). Rather than directly trying to improve each metric during your runs, he recommends tracking your stats and noting how they evolve and improve throughout your training.
+
+Here are eight running metrics that new settings on many smartwatches have made it easy to track. Read on for more about what they mean and how they may affect your [performance](https://www.runnersworld.com/news/a43697379/mental-fatigue-impairs-physical-performance-study/).
+
+## Understand These 8 Key Running Metrics
+
+## Ground Contact Time
+
+This stat is a measure of the amount of time your foot is in contact with the ground with each [stride](https://www.runnersworld.com/training/a36818854/gait-analysis/), and it naturally lowers the faster you run. Running with a [midfoot strike](https://www.runnersworld.com/health-injuries/a41824466/guide-to-runners-foot-strike/) (rather than landing on your heel) tends to improve this metric by lowering the contact time.
+
+Changing up your form to strike with your forefoot rather than your [heel](https://www.runnersworld.com/health-injuries/a36650122/heel-striking/) is tricky and not always advised. But, doing exercises that strengthen your [glutes and hamstrings](https://www.runnersworld.com/training/a42270996/glutes-and-hamstrings-workout/) can produce more powerful strides and, in turn, improve your ground contact time, says Gaudette.
+
+## Ground Contact Time Balance
+
+Ground contact time balance is a comparison of your ground contact times between your left and right foot. It’s usually displayed as a percentage and can help determine if you favor one side of your body over the other or have a limp.
+
+To improve it, add some [unilateral strength moves](https://www.runnersworld.com/training/a39538678/single-leg-exercises/) to your routine to work on any strength or [flexibility](https://www.runnersworld.com/health-injuries/a37577270/mobility-flexibility-for-runners/) weaknesses that might be causing the disparity.
+
+## Stride Length
+
+This straightforward stat measures the distance you cover with each step of your run. “Your [stride length](https://www.runnersworld.com/training/a32907031/stride-length/) will naturally change with [pace](https://www.runnersworld.com/training/a43592457/treadmill-pace-chart/)—getting shorter when you run slower, longer when you run faster,” says Gaudette.
+
+He warns that this isn’t a metric you should try to improve; pushing your stride length could cause you to overstride, which ups your chances of [injury](https://www.runnersworld.com/health-injuries/a43410872/sara-halls-injury-boston-marathon/). The goal is actually to limit overstriding, keeping your feet more under your center of mass.
+
+## Cadence
+
+If you’re going to use any metric to adjust your running, this would probably be it. [...

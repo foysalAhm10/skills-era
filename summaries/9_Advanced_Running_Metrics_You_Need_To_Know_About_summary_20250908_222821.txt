@@ -1,0 +1,71 @@
+Summary of: 9 Advanced Running Metrics You Need To Know About
+URL: https://www.runnersblueprint.com/advanced-running-metrics/
+Summary Date: 2025-09-08T22:28:21.266944
+==================================================
+
+SUMMARY:
+When I first started running, I thought tracking running metrics on my running watch was overkill—just a bunch of numbers. But once I began paying attention to stats like training load, ground contact time, and vertical oscillation, I realized they could completely change how I trained. You should also know your your max heart rate (HR Max), which is the maximum number of beats per minute your heart can handle during intense exercise. You can estimate it by subtracting your age from 220, but I’d urge to take a lab test for more accuracy
+
+==================================================
+FULL CONTENT:
+When I first started running, I thought tracking running metrics on my running watch was overkill—just a bunch of numbers.
+
+But once I began paying attention to stats like training load, ground contact time, and vertical oscillation, I realized they could completely change how I trained.
+
+Let’s get into the details of how you can use these metrics to enhance your [running form](https://www.runnersblueprint.com/proper-running-form/), efficiency, and overall fitness.
+
+### **Training Load**
+
+If you’re training hard regularly, your fitness will probably improve. But if you take too much time off, your performance might start slipping. That’s fitness adaptation for you.
+
+So how do you know if you’re doing it right? Enter training load.
+
+This metric tracks the overall strain of your [workouts](https://www.runnersblueprint.com/elevate-your-run-16-crossfit-workouts-tailored-for-runners/), using heart rate data to measure how much stress you’re putting on your aerobic system during and after your runs.
+
+This data gives you a personalized recommendation on when to scale back or push a bit harder. It’s all about finding that sweet spot for optimal training.
+
+Tracking this metric changed my approach: I’d go out every day, push myself to the max, and then wonder why I’d feel [so wiped out](https://www.runnersblueprint.com/sleepy-tired-after-running/).
+
+I remember one day my watch practically yelled at me to take it easy after a [brutal interval session.](https://www.runnersblueprint.com/interval-training-running/)
+
+Naturally, I ignored it, thinking I knew better, and went out for a long run. Rookie mistake! I ended up with a [calf strain](https://www.runnersblueprint.com/runners-guide-to-calf-strain-prevention-essential-tips-and-exercises/) and a week on the sidelines.
+
+Now, when my watch says rest, I take it seriously—it’s made a big difference.
+
+### **Ground Contact Time**
+
+If you’re struggling with [injuries](https://www.runnersblueprint.com/the-link-between-overuse-injuries-and-running-cadence/), ground contact time might offer some clues.
+
+GCT measures the time each foot spends on the ground while you’re running. A longer ground contact time is generally correlated with an inefficient running economy. Lowering your ground contact time may improve your [running efficiency](https://www.runnersblueprint.com/pain-free-running-game-changing-rules-for-efficient-training/) and help prevent injury.
+
+I’d been dealing with persistent [knee pain](https://www.runnersblueprint.com/how-to-prevent-knee-pain-when-running/) a few years back, and it was driving me crazy. I tried changing shoes, adjusting my pace, even taking a break, but nothing seemed to help.
+
+Eventually, I started tracking my GCT, and it turned out my left foot was lingering on the ground way longer than my right—it was a form imbalance I’d never noticed.
+
+After working on strengthening my weak side and shortening my stride, the pain finally disappeared.
+
+If you want to lower your GCT, try focusing on a quicker cadence and shorter stride. Think of it as taking ‘ninja steps’—light, quick, and stealthy.”
+
+### **Vertical Oscillation**
+
+Vertical oscillation measures how much your upper body moves up and down as you run.
+
+Ideally, you want to minimize this “bounce” to reduce energy waste. If you’re bouncing too much, that energy isn’t helping you move forward—it’s working against you.
+
+Let me explain.
+
+When running, your ultimate purpose is to propel your body forward and keep moving in a horizontal direction. Not up. Gravity speed isn’t going to change anytime soon.
+
+I hope this makes sense since by lowering vertical oscillation you might reduce energy waste, gravitation friction, and improve running economy. That’s a bunch of good things if you ask me.
+
+Excessive vertical oscillation may also indicate that [your form is breaking dow](https://www.runnersblueprint.com/the-science-of-proper-running-technique-boosting-performance-and-efficiency/)n. Thus, you can use this feature to monitor how your form deteriorates and how long it takes to go south, even if the [goal pace](https://www.runnersblueprint.com/pacing-strategy-running-races/) is maintained.
+
+To keep vertical oscillation low, work on shortening your [stride length](https://www.runnersblueprint.com/stride-length/) and imagine balancing something on your head to keep your movement steady. Exercises like squats and jumps can help strengthen [your core](https://www.runnersblueprint.com/core-exercises-every-runner-should-do/), glutes, and hamstrings—all essential for better running form.
+
+I used to think a little bounce was normal, part of the rhythm. But then I saw a race video, and it was a wake-up call. I was bobbing up and down like I was on a pogo stick!
+
+So, I started working on minimizing that ‘bounce’ by imagining a low ceiling I had to duck under. After a few weeks of working on it, I could feel the difference in how steady and efficient my runs became.
+
+### **Vertical Ratio**
+
+Vertical ratio measures you...

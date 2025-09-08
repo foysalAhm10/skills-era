@@ -1,6 +1,6 @@
 """
-Make HTTP requests with comprehensive authentication, session management, and metrics.
-Supports all major authentication types and enterprise patterns.
+Advanced Search Engine with comprehensive post-search features.
+Features: Summarization, Bookmarking, Information Extraction, and File Management.
 
 Environment Variable Support:
 1. Authentication tokens:
@@ -23,10 +23,11 @@ import http.cookiejar
 import json
 import os
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 from urllib.parse import urlparse, parse_qs, quote_plus
 from html import unescape
 import re
+import hashlib
 
 import markdownify
 import readabilipy.simple_json
@@ -38,6 +39,7 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
+from rich.console import Console
 from strands.types.tools import (
     ToolResult,
     ToolUse,
@@ -192,6 +194,16 @@ SESSION_CACHE = {}
 # Metrics storage
 REQUEST_METRICS = collections.defaultdict(list)
 
+# Configuration
+BOOKMARKS_FILE = "bookmarks.json"
+EXTRACTS_DIR = "extracted_info"
+SUMMARIES_DIR = "summaries"
+
+def ensure_directories():
+    """Create necessary directories if they don't exist."""
+    for dir_name in [EXTRACTS_DIR, SUMMARIES_DIR]:
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
 
 def extract_content_from_html(html: str) -> str:
     """Extract and convert HTML content to Markdown format.
@@ -262,685 +274,6 @@ def process_metrics(start_time: float, response: requests.Response) -> Dict[str,
     return metrics
 
 
-def handle_basic_auth(username: str, password: str) -> Dict[str, str]:
-    """Process Basic authentication."""
-    credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
-    return {"Authorization": f"Basic {credentials}"}
-
-
-def handle_digest_auth(config: Dict[str, Any], method: str, url: str) -> requests.auth.HTTPDigestAuth:
-    """Set up Digest authentication."""
-    return requests.auth.HTTPDigestAuth(config["username"], config["password"])
-
-
-def get_aws_credentials() -> tuple:
-    """Get AWS credentials from boto3 with proper credential chain."""
-    import boto3
-
-    # Create a boto3 session to ensure we're using the same credential chain
-    session = boto3.Session()
-    credentials = session.get_credentials()
-
-    if not credentials:
-        raise ValueError("No AWS credentials found in the credential chain")
-
-    frozen = credentials.get_frozen_credentials()
-    return frozen, session.region_name
-
-
-def handle_aws_sigv4(config: Dict[str, Any], url: str) -> AWSRequestsAuth:
-    """
-    Configure AWS SigV4 authentication using boto3's credential chain.
-    """
-    try:
-        # Get credentials using boto3's credential chain
-        credentials, default_region = get_aws_credentials()
-
-        # Get service from config (required)
-        service = config["service"]
-
-        # Get region from config or use default
-        region = config.get("region") or default_region
-
-        if not region:
-            raise ValueError("AWS region not found in config or environment")
-
-        parsed = urlparse(url)
-        auth = AWSRequestsAuth(
-            aws_access_key=credentials.access_key,
-            aws_secret_access_key=credentials.secret_key,
-            aws_host=parsed.netloc,
-            aws_region=region,
-            aws_service=service,
-            aws_token=credentials.token,  # Add session token directly
-        )
-
-        return auth
-
-    except Exception as e:
-        raise ValueError(f"AWS authentication error: {str(e)}") from e
-
-
-def handle_jwt(config: Dict[str, Any]) -> Dict[str, str]:
-    """Process JWT authentication."""
-    try:
-        import jwt  # Imported here to avoid global dependency
-    except ImportError:
-        raise ImportError(
-            "ImportError: PyJWT package is required for JWT authentication. Install with: pip install PyJWT"
-        ) from None
-
-    # Create expiration time using datetime module properly
-    expiry_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=config["expiry"])
-    token = jwt.encode(
-        {"exp": expiry_time},
-        config["secret"],
-        algorithm=config["algorithm"],
-    )
-
-    # Convert token to string based on type
-    token_str = token.decode("utf-8") if hasattr(token, "decode") else str(token)
-
-    return {"Authorization": f"Bearer {token_str}"}
-
-
-def format_json_response(content: str) -> Union[str, Syntax]:
-    """Format JSON response with syntax highlighting if valid JSON."""
-    try:
-        parsed = json.loads(content)
-        formatted = json.dumps(parsed, indent=2)
-        return Syntax(formatted, "json", theme="monokai", line_numbers=False)
-    except BaseException:
-        return content
-
-
-def format_headers_table(headers: Dict) -> Table:
-    """Format headers as a rich table."""
-    table = Table(title="Response Headers", show_header=True, box=box.ROUNDED)
-    table.add_column("Header", style="cyan")
-    table.add_column("Value", style="green")
-
-    for key, value in headers.items():
-        # Truncate very long header values
-        if isinstance(value, str) and len(value) > 100:
-            value = f"{value[:100]}..."
-        table.add_row(key, str(value))
-
-    return table
-
-
-def process_auth_headers(headers: Dict[str, Any], tool_input: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Process authentication headers based on input parameters.
-
-    Supports multiple authentication methods:
-    1. Environment variables: Uses auth_env_var to read tokens
-    2. Direct token: Uses auth_token parameter
-
-    Special handling for different APIs:
-    - GitHub: Uses "token" prefix (auth_type="token")
-    - GitLab: Uses "Bearer" prefix (auth_type="Bearer")
-    - AWS: Uses SigV4 signing (auth_type="aws_sig_v4")
-
-    Examples:
-        # GitHub API with environment variable
-        process_auth_headers({}, {"auth_type": "token", "auth_env_var": "GITHUB_TOKEN"})
-
-        # GitLab API with environment variable
-        process_auth_headers({}, {"auth_type": "Bearer", "auth_env_var": "GITLAB_TOKEN"})
-    """
-    headers = headers or {}
-
-    # Get auth token from input or environment
-    auth_token = tool_input.get("auth_token")
-    if not auth_token and "auth_env_var" in tool_input:
-        env_var_name = tool_input["auth_env_var"]
-        auth_token = os.getenv(env_var_name)
-        if not auth_token:
-            raise ValueError(
-                f"Environment variable '{env_var_name}' not found or empty. "
-                f"Use environment(action='list') to see available variables."
-            )
-
-    auth_type = tool_input.get("auth_type")
-
-    if auth_token:
-        # Handle other auth types
-        if auth_type == "Bearer":
-            headers["Authorization"] = f"Bearer {auth_token}"
-        elif auth_type == "token":
-            # GitHub API uses 'token' prefix
-            headers["Authorization"] = f"token {auth_token}"
-
-            # Special case for GitHub API to add proper Accept header if not present
-            if "Accept" not in headers and "github" in tool_input.get("url", "").lower():
-                headers["Accept"] = "application/vnd.github.v3+json"
-
-        elif auth_type == "custom":
-            headers["Authorization"] = auth_token
-        elif auth_type == "api_key":
-            headers["X-API-Key"] = auth_token
-
-    return headers
-
-
-def stream_response(response: requests.Response) -> str:
-    """Handle streaming response processing."""
-    chunks = []
-    for chunk in response.iter_content(chunk_size=8192):
-        if chunk:
-            chunks.append(chunk)
-    return b"".join(chunks).decode()
-
-
-def format_request_preview(method: str, url: str, headers: Dict, body: Optional[str] = None) -> Panel:
-    """Format request details for preview."""
-    table = Table(show_header=False, box=box.SIMPLE)
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="white")
-
-    table.add_row("Method", method)
-    table.add_row("URL", url)
-
-    # Add headers (hide sensitive values)
-    headers_str = {}
-    for key, value in headers.items():
-        if key.lower() in ["authorization", "x-api-key", "cookie"]:
-            # Show first 4 and last 4 chars if long enough, otherwise mask completely
-            if isinstance(value, str) and len(value) > 12:
-                headers_str[key] = f"{value[:4]}...{value[-4:]}"
-            else:
-                headers_str[key] = "********"
-        else:
-            headers_str[key] = value
-
-    table.add_row("Headers", str(headers_str))
-
-    if body:
-        # Try to format body as JSON if it's valid
-        try:
-            json_body = json.loads(body)
-            body = json.dumps(json_body, indent=2)
-            body_preview = body[:200] + "..." if len(body) > 200 else body
-            table.add_row("Body", f"(JSON) {body_preview}")
-        except BaseException:
-            body_preview = body[:200] + "..." if len(body) > 200 else body
-            table.add_row("Body", body_preview)
-
-    return Panel(
-        table,
-        title=f"[bold blue]🚀 HTTP Request Preview: {method} {urlparse(url).path}",
-        border_style="blue",
-        box=box.ROUNDED,
-    )
-
-
-def format_response_preview(
-    response: requests.Response, content: str, metrics: Optional[Dict[Any, Any]] = None
-) -> Panel:
-    """Format response for preview."""
-    status_code = response.status_code if response and hasattr(response, "status_code") else 0
-    status_style = "green" if 200 <= status_code < 400 else "red"  # type: ignore
-
-    # Main content panel
-    main_table = Table(show_header=False, box=box.SIMPLE)
-    main_table.add_column("Field", style="cyan")
-    main_table.add_column("Value")
-
-    # Status code with color
-    main_table.add_row("Status", Text(f"{response.status_code} {response.reason}", style=status_style))
-
-    # URL
-    main_table.add_row("URL", response.url)
-
-    # Content type
-    content_type = response.headers.get("Content-Type", "unknown")
-    main_table.add_row("Content-Type", content_type)
-
-    # Size
-    size_bytes = len(response.content)
-    size_display = f"{size_bytes:,} bytes"
-    if size_bytes > 1024:
-        size_display += f" ({size_bytes / 1024:.1f} KB)"
-    main_table.add_row("Size", size_display)
-
-    # Timing if metrics available
-    if metrics and "duration" in metrics:
-        main_table.add_row("Duration", f"{metrics['duration']:.3f} seconds")
-
-    # Format and preview content based on content type
-    if "application/json" in content_type:
-        try:
-            # Format JSON for display
-            json_obj = json.loads(content)
-            # Create syntax highlighted JSON
-            Syntax(
-                json.dumps(json_obj, indent=2),
-                "json",
-                theme="monokai",
-                line_numbers=False,
-            )
-        except BaseException:
-            # Not valid JSON, show as text
-            Text(content[:500] + "..." if len(content) > 500 else content)
-    elif "text/html" in content_type:
-        Syntax(
-            content[:500] + "..." if len(content) > 500 else content,
-            "html",
-            theme="monokai",
-            line_numbers=False,
-        )
-    else:
-        # Default text preview
-        Text(content[:500] + "..." if len(content) > 500 else content)
-
-    # Combine into main panel
-    status_emoji = "✅" if 200 <= status_code < 400 else "❌"  # type: ignore
-    reason = response.reason if response and hasattr(response, "reason") else ""
-    return Panel(
-        Panel(main_table, border_style="blue", box=box.SIMPLE),
-        title=f"[bold {status_style}]{status_emoji} HTTP Response: {status_code} {reason}",
-        border_style=status_style,
-        box=box.ROUNDED,
-    )
-
-
-def http_request(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """
-    Execute HTTP request with comprehensive authentication and features.
-
-    Common API Examples:
-
-    1. GitHub API (uses "token" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://api.github.com/user",
-            auth_type="token",
-            auth_env_var="GITHUB_TOKEN",
-        )
-        ```
-
-    2. GitLab API (uses "Bearer" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://gitlab.com/api/v4/user",
-            auth_type="Bearer",
-            auth_env_var="GITLAB_TOKEN",
-        )
-        ```
-
-    3. AWS S3 (uses "aws_sig_v4" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://s3.amazonaws.com/my-bucket",
-            auth_type="aws_sig_v4",
-            aws_auth={"service": "s3"},
-        )
-        ```
-
-    4. Using cookies from file and saving to cookie jar:
-        ```python
-        http_request(
-            method="GET",
-            url="https://internal-site.amazon.com",
-            cookie="~/.midway/cookie",
-            cookie_jar="~/.midway/cookie.updated",
-        )
-        ```
-
-    5. Control redirect behavior:
-        ```python
-        http_request(
-            method="GET",
-            url="https://example.com/redirect",
-            allow_redirects=True,  # Default behavior
-            max_redirects=5,  # Limit number of redirects to follow
-        )
-        ```
-
-    6. Convert HTML responses to markdown:
-        ```python
-        http_request(
-            method="GET",
-            url="https://example.com/article",
-            convert_to_markdown=True,  # Converts HTML content to readable markdown
-        )
-        ```
-
-    Environment Variables:
-    - Authentication tokens are read from environment when auth_env_var is specified
-    - AWS credentials are automatically loaded from environment variables or credentials file
-    - Use environment(action='list') to view all available environment variables
-    """
-    console = console_util.create()
-
-    try:
-        # Extract input from tool use object or use directly if already a dict
-        tool_input = {}
-        tool_use_id = "default_id"
-
-        if isinstance(tool, dict):
-            if "input" in tool:
-                tool_input = tool["input"]
-                tool_use_id = tool.get("toolUseId", "default_id")
-            # No else here - tool_input has already been initialized
-
-        method = tool_input["method"]
-        url = tool_input["url"]
-        headers = process_auth_headers(tool_input.get("headers", {}), tool_input)
-        body = tool_input.get("body")
-        verify = tool_input.get("verify_ssl", True)
-        cookie = tool_input.get("cookie")
-        cookie_jar = tool_input.get("cookie_jar")
-
-        # Preview request before execution
-        preview_panel = format_request_preview(method, url, headers, body)
-        console.print(preview_panel)
-
-        # Check if we're in development mode
-        strands_dev = os.environ.get("BYPASS_TOOL_CONSENT", "").lower() == "true"
-
-        # For modifying operations (non-GET requests), show confirmation dialog unless in BYPASS_TOOL_CONSENT mode
-        modifying_methods = {"POST", "PUT", "PATCH", "DELETE"}
-        needs_confirmation = method.upper() in modifying_methods and not strands_dev
-
-        if needs_confirmation:
-            # Show warning for potentially modifying requests
-            target_url = urlparse(url)
-            warning_panel = Panel(
-                Text.assemble(
-                    ("⚠️ Warning: ", "bold red"),
-                    (f"{method.upper()} request may modify data at ", "yellow"),
-                    (f"{target_url.netloc}{target_url.path}", "bold yellow"),
-                ),
-                title="[bold red]Modifying Request Confirmation",
-                border_style="red",
-                box=box.DOUBLE,
-                expand=False,
-                padding=(1, 1),
-            )
-            console.print(warning_panel)
-
-            # If body exists, show preview
-            if body:
-                try:
-                    # Try to format as JSON
-                    json_body = json.loads(body)
-                    body_preview = json.dumps(json_body, indent=2)
-                    console.print(
-                        Panel(
-                            Syntax(body_preview, "json", theme="monokai"),
-                            title="[bold blue]Request Body Preview",
-                            border_style="blue",
-                            box=box.ROUNDED,
-                        )
-                    )
-                except BaseException:
-                    # Not JSON, show as plain text
-                    console.print(
-                        Panel(
-                            Text(body[:500] + "..." if len(body) > 500 else body),
-                            title="[bold blue]Request Body Preview",
-                            border_style="blue",
-                            box=box.ROUNDED,
-                        )
-                    )
-
-            # Get user confirmation
-            user_input = get_user_input(
-                f"<yellow><bold>Do you want to proceed with this {method.upper()} request?</bold> [y/*]</yellow>"
-            )
-            if user_input.lower().strip() != "y":
-                cancellation_reason = (
-                    user_input
-                    if user_input.strip() != "n"
-                    else get_user_input("Please provide a reason for cancellation:")
-                )
-                error_message = f"HTTP request cancelled by the user. Reason: {cancellation_reason}"
-                error_panel = Panel(
-                    Text(error_message, style="bold red"),
-                    title="[bold red]Request Cancelled",
-                    border_style="red",
-                    box=box.HEAVY,
-                    expand=False,
-                )
-                console.print(error_panel)
-                # Return error status for cancellation to ensure test passes
-                return {
-                    "toolUseId": tool_use_id,
-                    "status": "error",
-                    "content": [{"text": error_message}],
-                }
-
-        # Session handling
-        session_config = tool_input.get("session_config", {})
-        session = get_cached_session(url, session_config)
-
-        # Authentication processing
-        auth: Optional[Union[requests.auth.HTTPDigestAuth, AWSRequestsAuth]] = None
-        if "auth_type" in tool_input:
-            auth_type = tool_input["auth_type"]
-
-            if auth_type == "digest":
-                auth = handle_digest_auth(tool_input["digest_auth"], method, url)
-            elif auth_type == "aws_sig_v4":
-                auth = handle_aws_sigv4(tool_input["aws_auth"], url)
-            elif auth_type == "basic":
-                if "basic_auth" not in tool_input:
-                    raise ValueError("basic_auth configuration required for basic authentication")
-                basic_config = tool_input["basic_auth"]
-                if "username" not in basic_config or "password" not in basic_config:
-                    raise ValueError("username and password required for basic authentication")
-                headers.update(handle_basic_auth(basic_config["username"], basic_config["password"]))
-            elif auth_type == "jwt":
-                headers.update(handle_jwt(tool_input["jwt_config"]))
-
-        # Show request confirmation message
-        console.print(Text("Sending request...", style="blue"))
-
-        # Prepare request
-        request_kwargs = {
-            "method": method,
-            "url": url,
-            "headers": headers,
-            "verify": verify,
-            "auth": auth,
-            "allow_redirects": tool_input.get("allow_redirects", True),
-        }
-
-        # Set max_redirects if specified
-        if "max_redirects" in tool_input:
-            max_redirects = tool_input["max_redirects"]
-            if max_redirects is not None and hasattr(session, "max_redirects"):
-                session.max_redirects = max_redirects
-
-        # Handle cookies
-        if cookie:
-            cookie_path = os.path.expanduser(cookie)
-            if os.path.exists(cookie_path):
-                cookies = http.cookiejar.MozillaCookieJar()
-                try:
-                    # Try Mozilla format first
-                    cookies.load(cookie_path, ignore_discard=True, ignore_expires=True)
-                    session.cookies.update(cookies)
-                except Exception:
-                    try:
-                        # Try Netscape format (curl style)
-                        with open(cookie_path, "r") as f:
-                            for line in f:
-                                line = line.strip()
-                                if line and not line.startswith("#"):
-                                    parts = line.split("\t")
-                                    if len(parts) >= 7:  # Standard Netscape format
-                                        (
-                                            domain,
-                                            flag,
-                                            path,
-                                            secure,
-                                            expires,
-                                            name,
-                                            value,
-                                        ) = parts
-                                        session.cookies.set(name, value, domain=domain, path=path)
-                    except Exception as e2:
-                        console.print(
-                            Text(
-                                f"Failed to load cookies from {cookie}: {str(e2)}",
-                                style="red",
-                            )
-                        )
-                console.print(Text(f"Using cookies from {cookie}", style="blue"))
-            else:
-                console.print(Text(f"Warning: Cookie file {cookie} not found", style="yellow"))
-
-        if body:
-            request_kwargs["data"] = body
-
-        # Execute request with metrics
-        start_time = time.time()
-        response = session.request(**request_kwargs)
-
-        # Save cookies to cookie jar if specified
-        if cookie_jar:
-            cookie_jar_path = os.path.expanduser(cookie_jar)
-            # Ensure directory exists
-            cookie_jar_dir = os.path.dirname(cookie_jar_path)
-            if cookie_jar_dir and not os.path.exists(cookie_jar_dir):
-                os.makedirs(cookie_jar_dir, exist_ok=True)
-
-            # Save cookies in Netscape format compatible with curl
-            with open(cookie_jar_path, "w") as f:
-                f.write("# Netscape HTTP Cookie File\n")
-                f.write("# https://curl.se/docs/http-cookies.html\n")
-                f.write("# This file was generated by Strands http_request tool\n\n")
-
-                for cookie in session.cookies:
-                    # Format is: domain flag path secure expires name value
-                    secure = "TRUE" if cookie.secure else "FALSE"
-                    httponly = "TRUE" if cookie.has_nonstandard_attr("httponly") else "FALSE"
-                    expires = str(int(cookie.expires)) if hasattr(cookie, "expires") and cookie.expires else "0"
-                    f.write(
-                        f"{cookie.domain}\t{httponly}\t{cookie.path}\t{secure}\t{expires}\t{cookie.name}\t{cookie.value}\n"
-                    )
-
-            console.print(Text(f"Cookies saved to {cookie_jar}", style="blue"))
-
-        # Process metrics if enabled
-        metrics = None
-        if tool_input.get("metrics", False):
-            metrics = process_metrics(start_time, response)
-
-        # Handle streaming responses
-        if tool_input.get("streaming", False):
-            content = stream_response(response)
-        else:
-            content = response.text
-
-        # Convert HTML to markdown if requested
-        convert_to_markdown = tool_input.get("convert_to_markdown", False)
-        if convert_to_markdown:
-            content_type = response.headers.get("content-type", "")
-            is_html_content = (
-                "text/html" in content_type.lower()
-                or "<html" in content[:100].lower()
-                or "<!doctype html" in content[:100].lower()
-            )
-
-            if is_html_content:
-                original_content = content
-                content = extract_content_from_html(content)
-
-                # Add a note if conversion was successful
-                if content != original_content:
-                    console.print(Text("✓ Converted HTML content to markdown", style="green"))
-
-        # Format and display the response
-        response_panel = format_response_preview(response, content, metrics if metrics is not None else None)
-        console.print(response_panel)
-
-        # Show redirect information if redirects were followed
-        if response.history:
-            redirect_count = len(response.history)
-            redirect_chain = " -> ".join([str(r.status_code) for r in response.history] + [str(response.status_code)])
-            redirect_info = Panel(
-                Text.assemble(
-                    (f"Followed {redirect_count} redirect(s): ", "yellow"),
-                    (redirect_chain, "cyan"),
-                ),
-                title="[bold blue]Redirect Information",
-                border_style="blue",
-                box=box.ROUNDED,
-                expand=False,
-                padding=(1, 1),
-            )
-            console.print(redirect_info)
-
-        # Show headers in a separate table if response was successful
-        if 200 <= response.status_code < 300:
-            console.print(format_headers_table(dict(response.headers)))
-
-        # Format response content for output
-        result_text = []
-        result_text.append(f"Status Code: {response.status_code}")
-
-        # Add redirect information if any redirects were followed
-        if response.history:
-            redirect_count = len(response.history)
-            redirect_chain = " -> ".join([str(r.status_code) for r in response.history] + [str(response.status_code)])
-            result_text.append(f"Redirects: {redirect_count} redirects followed ({redirect_chain})")
-
-        # Add minimal headers to text response
-        important_headers = ["Content-Type", "Content-Length", "Date", "Server"]
-        headers_text = {k: v for k, v in response.headers.items() if k in important_headers}
-        result_text.append(f"Headers: {headers_text}")
-
-        # Add body to text response
-        result_text.append(f"Body: {content}")
-
-        # Add metrics if available
-        if metrics:
-            result_text.append(f"Metrics: {metrics}")
-
-        return {
-            "toolUseId": tool_use_id,
-            "status": "success",
-            "content": [{"text": text} for text in result_text],
-        }
-
-    except Exception as e:
-        error_panel = Panel(
-            Text(str(e), style="red"),
-            title="❌ HTTP Request Error",
-            border_style="red",
-            box=box.ROUNDED,
-        )
-        console.print(error_panel)
-
-        # If the error appears to be related to authentication, show a suggestion
-        error_str = str(e).lower()
-        suggestion = ""
-        if "auth" in error_str or "token" in error_str or "credential" in error_str or "unauthorized" in error_str:
-            suggestion = (
-                "\n\nSuggestion: Check your authentication setup. Common solutions:\n"
-                "- For GitHub API: Use auth_type='token' with auth_env_var='GITHUB_TOKEN'\n"
-                "- For GitLab API: Use auth_type='Bearer' with auth_env_var='GITLAB_TOKEN'\n"
-                "- Use environment(action='list') to view available environment variables"
-            )
-
-        # Special handling for ImportError to help with test assertions
-        error_text = f"Error: {str(e)}{suggestion}"
-        if isinstance(e, ImportError):
-            error_text = f"ImportError: {str(e)}{suggestion}"
-
-        return {
-            "toolUseId": tool_use_id,
-            "status": "error",
-            "content": [{"text": error_text}],
-        }
-
 def _search_brave(query: str, top_n: int = 5) -> list[dict]:
     """
     Uses Brave Search API if BRAVE_API_KEY is present.
@@ -957,7 +290,7 @@ def _search_brave(query: str, top_n: int = 5) -> list[dict]:
     resp.raise_for_status()
     data = resp.json()
     results = data.get("web", {}).get("results", [])
-    return [{"title": r.get("title"), "url": r.get("url")} for r in results[:top_n] if r.get("url")]
+    return [{"title": r.get("title"), "url": r.get("url"), "snippet": r.get("description", "")} for r in results[:top_n] if r.get("url")]
 
 def _search_bing(query: str, top_n: int = 5) -> list[dict]:
     """
@@ -975,68 +308,441 @@ def _search_bing(query: str, top_n: int = 5) -> list[dict]:
     resp.raise_for_status()
     data = resp.json()
     items = (data.get("webPages", {}) or {}).get("value", [])
-    return [{"title": i.get("name"), "url": i.get("url")} for i in items[:top_n] if i.get("url")]
+    return [{"title": i.get("name"), "url": i.get("url"), "snippet": i.get("snippet", "")} for i in items[:top_n] if i.get("url")]
 
 def _search_duckduckgo(query: str, top_n: int = 5) -> list[dict]:
     """
     Fallback: scrape DuckDuckGo's HTML endpoint (no API key).
     We extract the destination from duckduckgo redirect links (?uddg=...).
     """
-    # Using the HTML endpoint (GET/POST both work; POST avoids caching oddities)
     url = "https://html.duckduckgo.com/html/"
     resp = requests.post(url, data={"q": query}, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
     resp.raise_for_status()
     html_text = resp.text
 
     results = []
-    # Find anchors that look like result links
-    # Example: <a class="result__a" href="/l/?kh=1&uddg=https%3A%2F%2Fexample.com">Title</a>
-    for m in re.finditer(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I|re.S):
+    # Find anchors that look like result links with snippets
+    for m in re.finditer(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>(.*?)<a class="result__snippet"', html_text, flags=re.I|re.S):
         href = unescape(m.group(1))
         title_html = m.group(2)
-        # strip basic tags from title
+        snippet_area = m.group(3)
+        
+        # Extract title
         title = re.sub(r"<.*?>", "", title_html).strip()
+        
+        # Extract snippet from the area between title and snippet link
+        snippet_match = re.search(r'class="result__snippet"[^>]*>(.*?)</a>', snippet_area, re.I|re.S)
+        snippet = ""
+        if snippet_match:
+            snippet = re.sub(r"<.*?>", "", snippet_match.group(1)).strip()
+        
         if href.startswith("/"):
             href = "https://duckduckgo.com" + href
         parsed = urlparse(href)
         qs = parse_qs(parsed.query)
-        dest = qs.get("uddg", [None])[0] or href  # if uddg missing, use href
+        dest = qs.get("uddg", [None])[0] or href
+        
         if dest and dest.startswith("http"):
-            results.append({"title": title or dest, "url": dest})
+            results.append({"title": title or dest, "url": dest, "snippet": snippet})
             if len(results) >= top_n:
                 break
     return results
 
 def search_web(query: str, top_n: int = 5) -> list[dict]:
     """
-    Try Brave -> Bing -> DuckDuckGo and return up to top_n dicts with {title, url}.
+    Try Brave -> Bing -> DuckDuckGo and return up to top_n dicts with {title, url, snippet}.
     """
-    # Prefer API backends if keys are present
     for func in (_search_brave, _search_bing, _search_duckduckgo):
         try:
             hits = func(query, top_n=top_n)
             if hits:
                 return hits[:top_n]
         except Exception:
-            # Fail soft and try the next backend
             continue
     return []
 
-def print_top_links(results: list[dict]) -> None:
+def print_search_results(results: list[dict]) -> None:
+    """Print search results with enhanced formatting."""
     if not results:
         print("No results found.")
         return
-    for i, r in enumerate(results, 1):
-        title = r.get("title") or r.get("url")
-        print(f"{i}. {title}\n   {r.get('url')}")
+    
+    console = Console()
+    
+    # Create a table for better formatting
+    table = Table(title="Search Results", box=box.ROUNDED, show_header=True, header_style="bold blue")
+    table.add_column("#", style="cyan", width=3)
+    table.add_column("Title", style="white", min_width=30)
+    table.add_column("Snippet", style="dim white", min_width=40)
+    table.add_column("URL", style="blue", min_width=30)
+    
+    for i, result in enumerate(results, 1):
+        title = result.get("title", "")[:60] + ("..." if len(result.get("title", "")) > 60 else "")
+        snippet = result.get("snippet", "")[:80] + ("..." if len(result.get("snippet", "")) > 80 else "")
+        url = result.get("url", "")
+        # Truncate long URLs for display
+        display_url = url[:50] + ("..." if len(url) > 50 else "")
         
-if __name__ == "__main__":
+        table.add_row(str(i), title, snippet, display_url)
+    
+    console.print(table)
+
+def get_page_content(url: str) -> str:
+    """Fetch and extract readable content from a webpage."""
     try:
-        q = input("🔎 Enter your search query: ").strip()
-        if not q:
-            raise SystemExit("Empty query. Exiting.")
-        links = search_web(q, top_n=5)
-        print("\nTop 5 results:")
-        print_top_links(links)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Extract readable content
+        content = extract_content_from_html(response.text)
+        return content
+    except Exception as e:
+        return f"Error fetching content: {str(e)}"
+
+def generate_summary(content: str, max_length: int = 500) -> str:
+    """Generate a simple summary by extracting key sentences."""
+    if not content or len(content) < 100:
+        return content
+    
+    # Simple summarization by taking first few sentences and key paragraphs
+    sentences = re.split(r'[.!?]\s+', content)
+    
+    # Take first 2 sentences and a few more from the middle
+    summary_sentences = []
+    if len(sentences) > 0:
+        summary_sentences.extend(sentences[:2])  # First 2 sentences
+    
+    if len(sentences) > 5:
+        mid_point = len(sentences) // 2
+        summary_sentences.extend(sentences[mid_point:mid_point+2])  # 2 from middle
+    
+    summary = '. '.join(summary_sentences)
+    
+    # Truncate if too long
+    if len(summary) > max_length:
+        summary = summary[:max_length] + "..."
+    
+    return summary
+
+def load_bookmarks() -> List[Dict]:
+    """Load bookmarks from JSON file."""
+    if os.path.exists(BOOKMARKS_FILE):
+        try:
+            with open(BOOKMARKS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_bookmarks(bookmarks: List[Dict]) -> None:
+    """Save bookmarks to JSON file."""
+    with open(BOOKMARKS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(bookmarks, f, indent=2, ensure_ascii=False)
+
+def add_bookmark(result: Dict) -> None:
+    """Add a result to bookmarks."""
+    bookmarks = load_bookmarks()
+    
+    # Check if already bookmarked
+    for bookmark in bookmarks:
+        if bookmark['url'] == result['url']:
+            print("This URL is already bookmarked!")
+            return
+    
+    bookmark = {
+        "title": result['title'],
+        "url": result['url'],
+        "snippet": result.get('snippet', ''),
+        "bookmarked_at": datetime.datetime.now().isoformat(),
+        "tags": []
+    }
+    
+    # Allow user to add tags
+    tags_input = input("Add tags (comma-separated, optional): ").strip()
+    if tags_input:
+        bookmark['tags'] = [tag.strip() for tag in tags_input.split(',')]
+    
+    bookmarks.append(bookmark)
+    save_bookmarks(bookmarks)
+    print(f"Bookmarked: {result['title']}")
+
+def view_bookmarks() -> None:
+    """Display all bookmarks."""
+    bookmarks = load_bookmarks()
+    if not bookmarks:
+        print("No bookmarks found.")
+        return
+    
+    console = Console()
+    table = Table(title="Your Bookmarks", box=box.ROUNDED)
+    table.add_column("#", style="cyan", width=3)
+    table.add_column("Title", style="white", min_width=30)
+    table.add_column("Tags", style="green", min_width=15)
+    table.add_column("Date", style="dim", min_width=12)
+    table.add_column("URL", style="blue", min_width=30)
+    
+    for i, bookmark in enumerate(bookmarks, 1):
+        title = bookmark['title'][:50] + ("..." if len(bookmark['title']) > 50 else "")
+        tags = ", ".join(bookmark.get('tags', []))
+        date = bookmark['bookmarked_at'][:10]  # Just the date part
+        url = bookmark['url'][:50] + ("..." if len(bookmark['url']) > 50 else "")
+        
+        table.add_row(str(i), title, tags, date, url)
+    
+    console.print(table)
+
+def extract_and_save_info(result: Dict) -> None:
+    """Extract specific information from a webpage and save to file."""
+    ensure_directories()
+    
+    print(f"Fetching content from: {result['title']}")
+    content = get_page_content(result['url'])
+    
+    if content.startswith("Error"):
+        print(content)
+        return
+    
+    print("What type of information would you like to extract?")
+    print("1. Email addresses")
+    print("2. Phone numbers") 
+    print("3. Dates")
+    print("4. URLs/Links")
+    print("5. Custom text pattern")
+    print("6. All text content")
+    
+    choice = input("Choose extraction type (1-6): ").strip()
+    
+    extracted = ""
+    filename_suffix = ""
+    
+    if choice == "1":
+        # Extract email addresses
+        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', content)
+        extracted = "\n".join(set(emails))  # Remove duplicates
+        filename_suffix = "emails"
+    elif choice == "2":
+        # Extract phone numbers (basic pattern)
+        phones = re.findall(r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b', content)
+        extracted = "\n".join(set(phones))
+        filename_suffix = "phones"
+    elif choice == "3":
+        # Extract dates (various formats)
+        dates = re.findall(r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})\b', content, re.IGNORECASE)
+        extracted = "\n".join(set(dates))
+        filename_suffix = "dates"
+    elif choice == "4":
+        # Extract URLs
+        urls = re.findall(r'https?://(?:[-\w.])+(?:[:\d]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:[\w.])*)?)?', content)
+        extracted = "\n".join(set(urls))
+        filename_suffix = "urls"
+    elif choice == "5":
+        # Custom pattern
+        pattern = input("Enter regex pattern to search for: ").strip()
+        try:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            extracted = "\n".join(set(matches))
+            filename_suffix = "custom"
+        except re.error as e:
+            print(f"Invalid regex pattern: {e}")
+            return
+    elif choice == "6":
+        # Full content
+        extracted = content
+        filename_suffix = "content"
+    else:
+        print("Invalid choice")
+        return
+    
+    if not extracted.strip():
+        print("No matching information found.")
+        return
+    
+    # Generate filename
+    safe_title = re.sub(r'[^\w\s-]', '', result['title'])[:50]
+    safe_title = re.sub(r'[-\s]+', '_', safe_title)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_title}_{filename_suffix}_{timestamp}.txt"
+    filepath = os.path.join(EXTRACTS_DIR, filename)
+    
+    # Save to file
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"Extracted from: {result['title']}\n")
+        f.write(f"URL: {result['url']}\n")
+        f.write(f"Extraction Date: {datetime.datetime.now().isoformat()}\n")
+        f.write(f"Extraction Type: {filename_suffix}\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(extracted)
+    
+    print(f"Information extracted and saved to: {filepath}")
+    print(f"Found {len(extracted.split('\\n')) if extracted else 0} items.")
+
+def create_summary(result: Dict) -> None:
+    """Create and save a summary of the webpage content."""
+    ensure_directories()
+    
+    print(f"Creating summary for: {result['title']}")
+    content = get_page_content(result['url'])
+    
+    if content.startswith("Error"):
+        print(content)
+        return
+    
+    # Generate summary
+    summary = generate_summary(content, max_length=1000)
+    
+    # Generate filename
+    safe_title = re.sub(r'[^\w\s-]', '', result['title'])[:50]
+    safe_title = re.sub(r'[-\s]+', '_', safe_title)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_title}_summary_{timestamp}.txt"
+    filepath = os.path.join(SUMMARIES_DIR, filename)
+    
+    # Save summary
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"Summary of: {result['title']}\n")
+        f.write(f"URL: {result['url']}\n")
+        f.write(f"Summary Date: {datetime.datetime.now().isoformat()}\n")
+        f.write("=" * 50 + "\n\n")
+        f.write("SUMMARY:\n")
+        f.write(summary)
+        f.write("\n\n" + "=" * 50 + "\n")
+        f.write("FULL CONTENT:\n")
+        f.write(content[:5000] + ("..." if len(content) > 5000 else ""))  # Truncated full content
+    
+    print(f"Summary saved to: {filepath}")
+    print(f"\nSummary preview:\n{summary[:200]}...")
+
+def show_action_menu() -> str:
+    """Display the action menu and get user choice."""
+    print("\nWhat would you like to do?")
+    print("1. Get summary of page")
+    print("2. Bookmark this link")
+    print("3. Extract specific information")
+    print("4. View all bookmarks")
+    print("5. Open link in browser")
+    print("6. Search again")
+    print("7. Exit")
+    
+    return input("Choose action (1-7): ").strip()
+
+def main():
+    """Enhanced main function with comprehensive search features."""
+    try:
+        ensure_directories()
+        
+        console = Console()
+        console.print(Panel.fit(
+            "[bold blue]Advanced Search Engine[/bold blue]\n" +
+            "Features: Summarization, Bookmarking, Information Extraction",
+            style="blue"
+        ))
+        
+        while True:
+            # Get search query
+            print("\n" + "="*60)
+            query = input("Enter your search query (or 'bookmarks' to view bookmarks, 'quit' to exit): ").strip()
+            
+            if query.lower() == 'quit':
+                break
+            elif query.lower() == 'bookmarks':
+                view_bookmarks()
+                continue
+            elif not query:
+                print("Please enter a search query.")
+                continue
+            
+            # Perform search
+            print(f"\nSearching for: {query}")
+            results = search_web(query, top_n=10)
+            
+            if not results:
+                print("No results found. Try a different query.")
+                continue
+            
+            # Display results
+            print_search_results(results)
+            
+            while True:
+                # Get user selection
+                try:
+                    choice = input(f"\nSelect a result (1-{len(results)}) or 'back' for new search: ").strip().lower()
+                    
+                    if choice == 'back':
+                        break
+                    
+                    result_index = int(choice) - 1
+                    if 0 <= result_index < len(results):
+                        selected_result = results[result_index]
+                        
+                        print(f"\nSelected: {selected_result['title']}")
+                        print(f"URL: {selected_result['url']}")
+                        
+                        # Show action menu
+                        while True:
+                            action = show_action_menu()
+                            
+                            if action == '1':
+                                create_summary(selected_result)
+                            elif action == '2':
+                                add_bookmark(selected_result)
+                            elif action == '3':
+                                extract_and_save_info(selected_result)
+                            elif action == '4':
+                                view_bookmarks()
+                            elif action == '5':
+                                print(f"Would open: {selected_result['url']}")
+                                print("(Browser integration not implemented)")
+                            elif action == '6':
+                                break  # Back to search
+                            elif action == '7':
+                                return
+                            else:
+                                print("Invalid choice. Please try again.")
+                                continue
+                            
+                            # Ask if user wants to do another action on the same result
+                            another = input("\nPerform another action on this result? (y/n): ").strip().lower()
+                            if another != 'y':
+                                break
+                        
+                        break  # Back to result selection or new search
+                    else:
+                        print(f"Please enter a number between 1 and {len(results)}")
+                        
+                except ValueError:
+                    print("Please enter a valid number or 'back'")
+                    
     except KeyboardInterrupt:
-        print("\nCancelled.")
+        print("\n\nSearch session ended.")
+    except Exception as e:
+        print(f"\nError: {e}")
+
+# Additional utility functions for file management
+def list_saved_files():
+    """List all saved summaries and extracts."""
+    print("\nSaved Files:")
+    print("-" * 40)
+    
+    if os.path.exists(SUMMARIES_DIR):
+        summaries = os.listdir(SUMMARIES_DIR)
+        if summaries:
+            print(f"\nSummaries ({len(summaries)} files):")
+            for f in sorted(summaries)[:10]:  # Show latest 10
+                print(f"  {f}")
+            if len(summaries) > 10:
+                print(f"  ... and {len(summaries) - 10} more")
+    
+    if os.path.exists(EXTRACTS_DIR):
+        extracts = os.listdir(EXTRACTS_DIR)
+        if extracts:
+            print(f"\nExtracts ({len(extracts)} files):")
+            for f in sorted(extracts)[:10]:  # Show latest 10
+                print(f"  {f}")
+            if len(extracts) > 10:
+                print(f"  ... and {len(extracts) - 10} more")
+
+if __name__ == "__main__":
+    main()
