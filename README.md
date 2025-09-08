@@ -12,21 +12,28 @@ It is built on top of the Strands Agents
 
 🛠 http_request Tool – Supports APIs, web data fetching, local servers, authentication, and sessions.
 
-🔧 Custom Tools – Includes an example letter_counter tool.
 
 ## 📂 Project Structure
 
-├── __init__.py          # Package initializer
-
-├── agent.py             # Example agent + tools
-
-├── test.py              # Main entrypoint: internet search utility
-
-├── requirements.txt     # Dependencies
-
-├── .env.example         # Environment variable template
-
-├── .gitignore           # Ignore env files and other artifacts
+├── extracted_info/\
+│ └── 9_Advanced_Running_Metrics_You... # Example extracted info file\
+│\
+├── my_agent/\
+│ ├── init.py # Package initializer\
+│ ├── .env.example # Environment variable template\
+│ ├── .gitignore # Ignore env files and other artifacts\
+│ ├── agent.py # Example agent + tools\
+│ ├── requirements.txt # Dependencies\
+│ └── test.py # Main entrypoint: internet search utility\
+│\
+├── summaries/\
+│ ├── 9_Advanced_Running_Metrics_You... # Example Summary file\
+│ └── Running_Metrics_Guide_8_Stats_to...# Another summary file\
+│\
+├── venv/ # Virtual environment\
+│\
+├── bookmarks.json # Bookmarks storage\
+└── README.md # Project documentation\
 
 ## ⚙️ Installation
 
@@ -64,7 +71,7 @@ python3 -u my_agent/test.py
 Then enter your query when prompted:
 
 ```
-🔎 Enter your search query: swimming classes Singapore
+🔎 Enter your search query: swimming classes in Singapore
 ```
 
 
