@@ -58,7 +58,7 @@ pip install -r requirements.txt
 Run the search agent:
 
 ```
-python test.py
+python3 -u my_agent/test.py
 ```
 
 Then enter your query when prompted:
